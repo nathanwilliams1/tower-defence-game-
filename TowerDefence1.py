@@ -1,0 +1,428 @@
+import pygame
+import pygame_gui
+import random
+import sys
+
+pygame.init()
+
+# --- Settings ---
+infoObject = pygame.display.Info()
+WINDOW_WIDTH, WINDOW_HEIGHT = infoObject.current_w, infoObject.current_h
+TILE_SIZE = 40
+GRID_WIDTH = WINDOW_WIDTH // TILE_SIZE
+GRID_HEIGHT = WINDOW_HEIGHT // TILE_SIZE
+
+# --- Init ---
+screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.FULLSCREEN)
+pygame.display.set_caption("Tower Defence Board")
+
+def show_start_menu():
+    menu_running = True
+    font_big = pygame.font.SysFont(None, 64)
+    font_small = pygame.font.SysFont(None, 36)
+    button_rect = pygame.Rect(WINDOW_WIDTH // 2 - 100, WINDOW_HEIGHT // 2, 200, 60)
+    while menu_running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if button_rect.collidepoint(event.pos):
+                    menu_running = False
+
+        screen.fill((30, 30, 30))
+        title = font_big.render("Tower Defence", True, (255, 215, 0))
+        screen.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, WINDOW_HEIGHT // 2 - 120))
+        pygame.draw.rect(screen, (50, 200, 50), button_rect)
+        text = font_small.render("Start Game", True, (255, 255, 255))
+        screen.blit(text, (button_rect.x + button_rect.width // 2 - text.get_width() // 2,
+                           button_rect.y + button_rect.height // 2 - text.get_height() // 2))
+        pygame.display.flip()
+
+def show_restart_menu():
+    menu_running = True
+    font_big = pygame.font.SysFont(None, 64)
+    font_small = pygame.font.SysFont(None, 36)
+    button_rect = pygame.Rect(WINDOW_WIDTH // 2 - 100, WINDOW_HEIGHT // 2, 200, 60)
+    while menu_running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if button_rect.collidepoint(event.pos):
+                    menu_running = False
+
+        screen.fill((30, 30, 30))
+        title = font_big.render("Game Over", True, (255, 0, 0))
+        screen.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, WINDOW_HEIGHT // 2 - 120))
+        pygame.draw.rect(screen, (50, 200, 50), button_rect)
+        text = font_small.render("Restart", True, (255, 255, 255))
+        screen.blit(text, (button_rect.x + button_rect.width // 2 - text.get_width() // 2,
+                           button_rect.y + button_rect.height // 2 - text.get_height() // 2))
+        pygame.display.flip()
+
+def generate_structured_path():
+    path = []
+    x, y = 0, random.randint(2, GRID_HEIGHT - 3)  # Start away from edges for better structure
+    path.append((x, y))
+    direction = 'right'
+    vertical_dir = 1  # 1 for down, -1 for up
+
+    while x < GRID_WIDTH - 1:
+        # Move right for a random segment length
+        segment_length = random.randint(2, 4)
+        for _ in range(segment_length):
+            if x < GRID_WIDTH - 1:
+                x += 1
+                path.append((x, y))
+        # Move vertically for a random segment length
+        segment_length = random.randint(2, 4)
+        for _ in range(segment_length):
+            if 1 < y + vertical_dir < GRID_HEIGHT - 2:
+                y += vertical_dir
+                path.append((x, y))
+        vertical_dir *= -1  # Change vertical direction for next segment
+
+    return path
+
+enemy_path = generate_structured_path()
+
+# --- Enemy class ---
+class Enemy:
+    def __init__(self, path, enemy_type="Normal"):
+        self.path = path
+        self.path_index = 0
+        self.x, self.y = path[0]
+        self.pos = [self.x * TILE_SIZE + TILE_SIZE // 2, self.y * TILE_SIZE + TILE_SIZE // 2]
+        self.type = enemy_type
+
+        # Set stats based on type
+        if self.type == "Normal":
+            self.speed = 2
+            self.hp = 3
+            self.color = (200, 50, 50)
+        elif self.type == "Fast":
+            self.speed = 4
+            self.hp = 2
+            self.color = (50, 200, 200)
+        elif self.type == "Tank":
+            self.speed = 1
+            self.hp = 8
+            self.color = (100, 100, 200)
+        elif self.type == "Boss":
+            self.speed = 1
+            self.hp = 30
+            self.color = (255, 0, 255)  # Magenta for boss
+        else:
+            self.speed = 2
+            self.hp = 3
+            self.color = (200, 50, 50)
+
+    def update(self):
+        if self.path_index < len(self.path) - 1:
+            target_x, target_y = self.path[self.path_index + 1]
+            target_px = target_x * TILE_SIZE + TILE_SIZE // 2
+            target_py = target_y * TILE_SIZE + TILE_SIZE // 2
+
+            # Move along x axis first, then y axis (no diagonal movement)
+            if abs(self.pos[0] - target_px) > 0:
+                dx = target_px - self.pos[0]
+                step = self.speed if abs(dx) > self.speed else abs(dx)
+                self.pos[0] += step if dx > 0 else -step
+                if abs(self.pos[0] - target_px) < self.speed:
+                    self.pos[0] = target_px
+            elif abs(self.pos[1] - target_py) > 0:
+                dy = target_py - self.pos[1]
+                step = self.speed if abs(dy) > self.speed else abs(dy)
+                self.pos[1] += step if dy > 0 else -step
+                if abs(self.pos[1] - target_py) < self.speed:
+                    self.pos[1] = target_py
+
+            if abs(self.pos[0] - target_px) < 1 and abs(self.pos[1] - target_py) < 1:
+                self.pos[0] = target_px
+                self.pos[1] = target_py
+                self.path_index += 1
+
+    def draw(self, surface):
+        if self.type == "Boss":
+            radius = TILE_SIZE // 2      # Boss is bigger
+            # Draw boss circle
+            pygame.draw.circle(surface, self.color, (int(self.pos[0]), int(self.pos[1])), radius)
+            # Draw boss health bar
+            bar_width = TILE_SIZE * 2
+            bar_height = 10
+            bar_x = int(self.pos[0]) - bar_width // 2
+            bar_y = int(self.pos[1]) - radius - 18
+            # Health ratio
+            health_ratio = max(self.hp, 0) / 30  # 30 is boss max hp
+            pygame.draw.rect(surface, (100, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+            pygame.draw.rect(surface, (0, 200, 0), (bar_x, bar_y, int(bar_width * health_ratio), bar_height))
+            # Optional: draw border
+            pygame.draw.rect(surface, (255,255,255), (bar_x, bar_y, bar_width, bar_height), 2)
+        else:
+            radius = TILE_SIZE // 3      # Normal size
+            pygame.draw.circle(surface, self.color, (int(self.pos[0]), int(self.pos[1])), radius)
+
+# --- Tower class ---
+class Tower:
+    def __init__(self, x, y, tower_type="Normal"):
+        self.x = x
+        self.y = y
+        self.type = tower_type
+
+        # Set stats based on type
+        if self.type == "Normal":
+            self.range = 2
+            self.cooldown = 60
+            self.color = (50, 200, 50)
+        elif self.type == "Sniper":
+            self.range = 5
+            self.cooldown = 120
+            self.color = (200, 200, 50)
+        elif self.type == "Rapid":
+            self.range = 1
+            self.cooldown = 20
+            self.color = (50, 50, 200)
+        else:
+            self.range = 2
+            self.cooldown = 60
+            self.color = (50, 200, 50)
+        self.cooldown_timer = 0
+
+    def update(self, enemies):
+        if self.cooldown_timer > 0:
+            self.cooldown_timer -= 1
+            return None
+        # Find the first enemy in range
+        for enemy in enemies:
+            ex, ey = enemy.pos[0] / TILE_SIZE, enemy.pos[1] / TILE_SIZE
+            if abs(self.x - ex) <= self.range and abs(self.y - ey) <= self.range:
+                self.cooldown_timer = self.cooldown
+                return enemy  # Attack this enemy
+        return None
+
+    def draw(self, surface):
+        pygame.draw.rect(surface, self.color, (self.x * TILE_SIZE + 8, self.y * TILE_SIZE + 8, TILE_SIZE - 16, TILE_SIZE - 16))
+
+# --- Enemy list ---
+enemies = []
+enemy_spawn_timer = 0
+ENEMY_SPAWN_INTERVAL = 120  # frames
+
+enemies_spawned = 0
+boss_spawned = False
+
+# --- Tower list ---
+towers = []
+
+# --- Base health ---
+base_health = 10
+
+enemies_destroyed = 0
+shots_fired = 0
+damage_dealt = 0
+
+dragging_tower = None
+dragging = False
+drag_pos = (0,0)
+
+def show_game_over_screen(enemies_destroyed, shots_fired, damage_dealt, message="GAME OVER!"):
+    waiting = True
+    font = pygame.font.SysFont(None, 64)
+    font_small = pygame.font.SysFont(None, 36)
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                waiting = False
+
+        screen.fill((30, 30, 30))
+        text = font.render(message, True, (255, 0, 0))
+        screen.blit(text, (WINDOW_WIDTH // 2 - text.get_width() // 2, WINDOW_HEIGHT // 2 - 100))
+        stats1 = font_small.render(f"Enemies destroyed: {enemies_destroyed}", True, (255,255,255))
+        stats2 = font_small.render(f"Shots fired: {shots_fired}", True, (255,255,255))
+        stats3 = font_small.render(f"Damage dealt: {damage_dealt}", True, (255,255,255))
+        screen.blit(stats1, (WINDOW_WIDTH // 2 - 150, WINDOW_HEIGHT // 2))
+        screen.blit(stats2, (WINDOW_WIDTH // 2 - 150, WINDOW_HEIGHT // 2 + 40))
+        screen.blit(stats3, (WINDOW_WIDTH // 2 - 150, WINDOW_HEIGHT // 2 + 80))
+        font_tip = pygame.font.SysFont(None, 28)
+        tip = font_tip.render("Left click to continue...", True, (200, 200, 200))
+        screen.blit(tip, (WINDOW_WIDTH // 2 - tip.get_width() // 2, WINDOW_HEIGHT // 2 + 140))
+        pygame.display.flip()
+
+def draw_tower_ui(selected_tower=None, dragging=False, drag_pos=(0,0)):
+    tower_types = [("Normal", (50, 200, 50)), ("Sniper", (200, 200, 50)), ("Rapid", (50, 50, 200))]
+    card_width, card_height = 80, 100
+    spacing = 30
+    y = WINDOW_HEIGHT - card_height - 20
+    font = pygame.font.SysFont(None, 28)
+    for i, (name, color) in enumerate(tower_types):
+        x = 40 + i * (card_width + spacing)
+        rect = pygame.Rect(x, y, card_width, card_height)
+        if selected_tower == name and not dragging:
+            pygame.draw.rect(screen, (255, 255, 255), rect.inflate(8, 8), 4)
+        pygame.draw.rect(screen, color, rect)
+        text = font.render(name, True, (0,0,0))
+        screen.blit(text, (x + card_width//2 - text.get_width()//2, y + card_height//2 - text.get_height()//2))
+        if dragging and selected_tower == name:
+            # Draw dragged card at mouse position
+            mx, my = drag_pos
+            drag_rect = pygame.Rect(mx-40, my-50, card_width, card_height)
+            pygame.draw.rect(screen, color, drag_rect)
+            pygame.draw.rect(screen, (255,255,255), drag_rect, 3)
+            screen.blit(text, (mx-40 + card_width//2 - text.get_width()//2, my-50 + card_height//2 - text.get_height()//2))
+
+def run_game():
+    # --- All your game setup code here ---
+    show_start_menu()
+
+    # Re-initialize all game state variables here
+    global enemy_path  # If you want a new path each game, regenerate here
+    enemy_path = generate_structured_path()
+    enemies = []
+    enemy_spawn_timer = 0
+    ENEMY_SPAWN_INTERVAL = 120  # frames
+    enemies_spawned = 0
+    boss_spawned = False
+    towers = []
+    base_health = 10
+    enemies_destroyed = 0
+    shots_fired = 0
+    damage_dealt = 0
+    dragging_tower = None
+    dragging = False
+    drag_pos = (0, 0)
+
+    clock = pygame.time.Clock()
+    running = True
+    while running:
+        clock.tick(60)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = pygame.mouse.get_pos()
+                # Check if clicked on a tower card
+                tower_types = [("Normal", (50, 200, 50)), ("Sniper", (200, 200, 50)), ("Rapid", (50, 50, 200))]
+                card_width, card_height = 80, 100
+                spacing = 30
+                y = WINDOW_HEIGHT - card_height - 20
+                for i, (name, color) in enumerate(tower_types):
+                    x = 40 + i * (card_width + spacing)
+                    rect = pygame.Rect(x, y, card_width, card_height)
+                    if rect.collidepoint(mx, my):
+                        dragging_tower = name
+                        dragging = True
+                        drag_pos = (mx, my)
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if dragging and dragging_tower:
+                    mx, my = pygame.mouse.get_pos()
+                    gx, gy = mx // TILE_SIZE, my // TILE_SIZE
+                    # Only place if not on path and not occupied and inside grid
+                    if 0 <= gx < GRID_WIDTH and 0 <= gy < GRID_HEIGHT:
+                        if (gx, gy) not in enemy_path and all(t.x != gx or t.y != gy for t in towers):
+                            towers.append(Tower(gx, gy, dragging_tower))
+                    dragging = False
+                    dragging_tower = None
+            elif event.type == pygame.MOUSEMOTION:
+                if dragging:
+                    drag_pos = event.pos
+
+        screen.fill((30, 30, 30))
+
+        # Draw path (highlighted)
+        for (x, y) in enemy_path:
+            rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+            pygame.draw.rect(screen, (255, 215, 0), rect)
+
+        # Draw grid
+        for x in range(GRID_WIDTH):
+            for y in range(GRID_HEIGHT):
+                rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                pygame.draw.rect(screen, (60, 60, 60), rect, 1)
+
+        # Place tower on mouse click (not on path)
+
+        # Spawn enemies
+        enemy_spawn_timer += 1
+        if not boss_spawned:
+            if enemy_spawn_timer >= ENEMY_SPAWN_INTERVAL and enemies_spawned < 10:
+                enemy_type = random.choice(["Normal", "Fast", "Tank"])
+                enemies.append(Enemy(enemy_path, enemy_type))
+                enemy_spawn_timer = 0
+                enemies_spawned += 1
+            # Spawn boss after 10 regular enemies
+            if enemies_spawned >= 10 and not boss_spawned:
+                enemies.append(Enemy(enemy_path, "Boss"))
+                boss_spawned = True
+
+        # Update and draw enemies
+        enemies_to_remove = []
+        for enemy in enemies:
+            enemy.update()
+            enemy.draw(screen)
+            if enemy.path_index >= len(enemy.path) - 1:
+                base_health -= 1
+                enemies_to_remove.append(enemy)
+        # Remove enemies that reached the end
+        for enemy in enemies_to_remove:
+            if enemy.type == "Boss":
+                show_game_over_screen(enemies_destroyed, shots_fired, damage_dealt, "GAME OVER! The Boss reached the base!")
+                return
+            enemies.remove(enemy)
+
+        # Damage enemies hit by towers
+        for tower in towers:
+            target = tower.update(enemies)
+            if target:
+                shots_fired += 1
+                target.hp -= 1
+                damage_dealt += 1
+
+        # Remove dead enemies
+        destroyed_this_frame = [e for e in enemies if e.hp <= 0]
+        enemies_destroyed += len(destroyed_this_frame)
+        enemies = [e for e in enemies if e.hp > 0]
+
+        # Update and draw towers
+        for tower in towers:
+            target = tower.update(enemies)
+            tower.draw(screen)
+            # Draw attack line if attacking
+            if target:
+                pygame.draw.line(screen, (0,255,0), 
+                    (tower.x * TILE_SIZE + TILE_SIZE//2, tower.y * TILE_SIZE + TILE_SIZE//2),
+                    (int(target.pos[0]), int(target.pos[1])), 2)
+
+        # Draw base health bar
+        bar_width = 200
+        bar_height = 20
+        health_ratio = max(base_health, 0) / 10
+        pygame.draw.rect(screen, (100, 0, 0), (20, 20, bar_width, bar_height))
+        pygame.draw.rect(screen, (0, 200, 0), (20, 20, int(bar_width * health_ratio), bar_height))
+        font = pygame.font.SysFont(None, 24)
+        text = font.render(f"Base Health: {base_health}", True, (255,255,255))
+        screen.blit(text, (20, 45))
+
+        # Game over if base health runs out
+        if base_health <= 0:
+            show_game_over_screen(enemies_destroyed, shots_fired, damage_dealt)
+            return
+
+        draw_tower_ui(dragging_tower, dragging, drag_pos)
+        pygame.display.flip()
+
+    return
+
+while True:
+
+
+    
+    run_game()
+    show_restart_menu()
+
+pygame.quit()
+sys.exit()
